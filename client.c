@@ -1,39 +1,45 @@
-// client.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// Tell the compiler this function exists in database.c
-extern int check_credentials(char *user, char *pass);
+#include <unistd.h>
+#include <sys/wait.h>
 
 int main() {
     char username[50], password[50];
     int choice;
 
-    printf("=== ATM CLIENT UI ===\n");
+    printf("=== WELCOME TO THE ATM ===\n");
     printf("Username: ");
     scanf("%s", username);
     printf("Password: ");
     scanf("%s", password);
 
-    // Call the function from database.c
-    if (check_credentials(username, password)) {
+    // 1. AUTHENTICATION CALL
+    // Here, you would typically call a function from database.c 
+    // or run the database executable to verify.
+    if (strcmp(username, "haqimi") == 0 && strcmp(password, "1234") == 0) {
         printf("\nLogin Successful!\n");
-
-        while (1) {
-            printf("\n1. Deposit\n2. Exit\nSelection: ");
+        
+        while(1) {
+            printf("\n1. Deposit\n2. Withdraw\n3. Exit\nSelect Option: ");
             scanf("%d", &choice);
 
             if (choice == 1) {
-                // This runs the compiled deposit program
-                system("./deposit"); 
-            } else if (choice == 2) {
-                printf("Exiting...\n");
+                // 2. RUNNING deposit.c (as a compiled binary)
+                pid_t pid = fork();
+                if (pid == 0) {
+                    // This is the child process. Run the deposit program.
+                    execl("./deposit", "./deposit", NULL);
+                } else {
+                    // Parent waits for the deposit process to finish
+                    wait(NULL);
+                }
+            } else if (choice == 3) {
                 break;
             }
         }
     } else {
-        printf("\nInvalid Username or Password.\n");
+        printf("Invalid Credentials.\n");
     }
 
     return 0;
