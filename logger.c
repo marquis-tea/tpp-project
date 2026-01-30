@@ -1,3 +1,5 @@
+#include "common.h"
+
 int main() {
 	int bytes_read;
 	char buf[MAX_BUF];
