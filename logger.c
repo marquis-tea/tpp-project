@@ -34,7 +34,6 @@ int main() {
 		}
 
 		for(;;) {
-			printf("[Logger] Waiting for read.\n"); 
 			bytes_read = read(fifo_fd, buf, MAX_BUF);
 
 			if (bytes_read > 0) {

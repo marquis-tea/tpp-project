@@ -92,7 +92,7 @@ int main() {
 		strcpy(pin, temp_pin);
 		
 		/* Send LGN to client to validate ID and PIN */
-		snprintf(send_buf, MAX_BUF, "LGN" MSG_DELIM "%s" MSG_DELIM "%s", id, pin);
+		snprintf(send_buf, MAX_BUF, LGN MSG_DELIM "%s" MSG_DELIM "%s", id, pin);
 		send(sockfd, send_buf, strlen(send_buf) + 1, 0);
 		
 		show_loading("\nVerifying credentials");
@@ -129,9 +129,12 @@ int main() {
 		alarm(TIMEOUT);
 
 		if (choice == 1) { // --- CHECK BALANCE ---
-			send(sockfd, BAL, strlen(BAL) + 1, 0);
+			snprintf(send_buf, MAX_BUF, BAL MSG_DELIM "%s", id);
+			send(sockfd, send_buf, strlen(send_buf) + 1, 0);
+			
 			bzero(recv_buf, sizeof(recv_buf));
 			recv(sockfd, recv_buf, sizeof(recv_buf), 0);
+			printf("Received balance.\n");
 			
 			char* bal = strchr(recv_buf, MSG_DELIM[0]);
 			bal++; /* Parse message to get the balance */
@@ -144,7 +147,7 @@ int main() {
 			clear_stdin();
 
 			show_loading("Processing Deposit");
-			snprintf(send_buf, MAX_BUF, "DEP" MSG_DELIM "%f", amount); 
+			snprintf(send_buf, MAX_BUF, DEP MSG_DELIM "%s" MSG_DELIM "%f", id, amount); 
 			send(sockfd, send_buf, strlen(send_buf) + 1, 0);
 
 			bzero(recv_buf, sizeof(recv_buf));
@@ -161,7 +164,7 @@ int main() {
 			clear_stdin();
 
 			show_loading("Processing Withdrawal");
-			snprintf(send_buf, MAX_BUF, "WDW" MSG_DELIM "%f", amount);
+			snprintf(send_buf, MAX_BUF, WDW MSG_DELIM "%s" MSG_DELIM "%f", id, amount);
 			send(sockfd, send_buf, strlen(send_buf) + 1, 0);
 
 			bzero(recv_buf, sizeof(recv_buf));
