@@ -9,6 +9,10 @@
 
 #define MAX_FIELD 50
 #define SEM_KEY 1234
+#define ID_FIELD 8
+#define USR_FIELD 20
+#define PIN_FIELD 6
+#define BAL_FIELD 15
 
 union semun {
     int val;
@@ -174,7 +178,7 @@ int check_balance(int fd, const char *target_id, double* balance_output) {
 
 	// --- STATE 3: Read Balance ---
 	else if (state == 3) {
-	    if (ch == '\n' || ch == '\r') {
+	    if (ch == '|') {
 		current_field[idx] = '\0'; // Null-terminate Balance
 		
 		// Copy balance to output
@@ -257,7 +261,7 @@ int deposit_amount(int fd, int semid, const char *target_id, double* deposit_amt
 
 	// --- STATE 3: Read Balance ---
 	else if (state == 3) {
-	    if (ch == '\n' || ch == '\r') {
+	    if (ch == '|') {
 		current_field[idx] = '\0';
 		
 		// Calculate new balance
@@ -267,7 +271,7 @@ int deposit_amount(int fd, int semid, const char *target_id, double* deposit_amt
 		
 		// Convert new balance to string
 		char new_balance_str[MAX_FIELD];
-		int new_len = snprintf(new_balance_str, MAX_FIELD, "%.2f", new_balance);
+		int new_len = snprintf(new_balance_str, MAX_FIELD, "%015.2f", new_balance);
 		int old_len = strlen(current_field);
 		
 		// Seek back to balance position and write new balance
@@ -362,7 +366,7 @@ int withdraw_amount(int fd, int semid, const char *target_id, double* withdraw_a
         
         // --- STATE 3: Read Balance ---
         else if (state == 3) {
-            if (ch == '\n' || ch == '\r') {
+            if (ch == '|') {
                 current_field[idx] = '\0';
                 
                 current_balance = atof(current_field);
@@ -379,7 +383,7 @@ int withdraw_amount(int fd, int semid, const char *target_id, double* withdraw_a
                 
                 // Convert new balance to string
                 char new_balance_str[MAX_FIELD];
-                int new_len = snprintf(new_balance_str, MAX_FIELD, "%.2f", new_balance);
+                int new_len = snprintf(new_balance_str, MAX_FIELD, "%015.2f", new_balance);
                 int old_len = strlen(current_field);
                 
                 // Seek back to balance position and write new balance
