@@ -2,15 +2,19 @@
 #include "common.h"
 #include "database.h"
 
+int sockfd, fifo_fd, acc_fd, msgid, semid, log_pid;
+
+/* Function prototypes */
 int server_login(int, int, char*, char*);
 int server_checkbal(int, int, char*, char*);
 int server_withdraw(int, int, int, char*, char*);
 int server_deposit(int, int, int, char*, char*);
 int alert_error(char*, int);
 int update_log(char*, char*, char*, int);
+void handle_shutdown(int);
 
 int main() {
-	int sockfd, cli_len, nready, max_i, nrecv, fifo_fd, msgid, acc_fd, semid;
+	int cli_len, nready, max_i, nrecv;
 	struct pollfd pollfds[MAX_CLI];
 	char pollid[MAX_CLI][ID_LEN + 1];
 	char buf[MAX_BUF], rsp[MAX_BUF];
@@ -22,15 +26,7 @@ int main() {
 	serv_addr.sin_port = htons(SERV_TCP_PORT);
 	serv_addr.sin_addr.s_addr = inet_addr("192.168.0.16"); /* Change server IP address here */
 	
-	if(fork() == 0) {
-		printf("Starting logger module...\n");
-		execl("./logger", "logger", (char *) 0);
-		perror("execl() failed");
-		exit(1);
-	}
-	sleep(1);
-	
-	printf("Creating socket...\n");
+	printf("[SERVER] Creating socket...\n");
 	if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		perror("socket() error");
 		exit(1);
@@ -44,7 +40,8 @@ int main() {
 		exit(1);
 	}
 	
-	printf("Binding socket...\n");
+	/* Binding the socket */
+	printf("[SERVER] Binding socket...\n");
 	if(bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
 		perror("bind() error");
 		close(sockfd);
@@ -56,27 +53,48 @@ int main() {
 	if (acc_fd == -1) {
 		perror("Error opening file");
 		return 1;
-    	}
-    	
+    	}	
+		
     	/* Creating Semaphore */
 	semid = semget(SEM_KEY, 1, IPC_CREAT | 0666);
 	if (semid == -1) perror("Error creating semaphore");
-	else printf("Created semaphore...\n");
+	else printf("[SERVER] Created semaphore...\n");
 	
-	// Initialize semaphore to 1 (unlocked)
+	/* Initialize semaphore to 1 (unlocked) */
 	union semun arg;
 	arg.val = 1;
 	semctl(semid, 0, SETVAL, arg);
     
-	/* Connecting to FIFO pipe */
-	if((fifo_fd = open(FIFO_NAME, O_WRONLY | O_NONBLOCK)) < 0) perror("Open FIFO failed");
-	else printf("Connected to FIFO pipe...\n");
+	/* Creating FIFO pipe */
+	if (mkfifo(FIFO_NAME, 0666) < 0) {
+		if (errno != EEXIST) {
+			perror("mkfifo() failed");
+			exit(1);
+		} else printf("Created FIFO pipe...\n");
+	}
 	
-	/* Connecting to Message Queue */
-	if((msgid = msgget(MSG_KEY, 0666)) < 0) perror("Get message queue failed");
-	else printf("Connected to message queue...\n");
+	/* Connecting to/Creating Message Queue */
+	if((msgid = msgget(MSG_KEY, 0666 | IPC_CREAT)) < 0) perror("Get message queue failed");
+	else printf("[SERVER] Connected to message queue...\n");
 	
-	printf("Listening for connection request...\n");
+	/* Forking and executing logger program */
+	if((log_pid = fork()) == 0) {
+		printf("[SERVER] Starting logger module...\n");
+		execl("./logger", "logger", (char *) 0);
+		perror("execl() failed");
+		exit(1);
+	}
+	
+	/* Opening the FIFO pipe */
+	if((fifo_fd = open(FIFO_NAME, O_WRONLY)) < 0) perror("Open FIFO failed");
+	else printf("[SERVER] Connected to FIFO pipe...\n");
+	
+	/* Setup shutdown signal handler */
+	static struct sigaction act;
+	act.sa_handler = handle_shutdown;
+	sigaction(SIGINT, &act, (void *) 0);
+	
+	printf("[SERVER] Listening for connection request...\n");
 	listen(sockfd, 5);
 	
 	/* Set sockfd as the listening fd for accepting new clients */
@@ -142,9 +160,10 @@ int main() {
 					default: 
 					
 					if(nrecv < MAX_BUF) buf[nrecv] = '\0';
+					printf("\nReceived message %s from client %s.\n", buf, inet_ntoa(cli_addr.sin_addr));
 					
 					if(strncmp(buf, LGOUT, strlen(LGOUT)) == 0) {
-						printf("Client requested logout.\n");
+						printf("\nClient %s requested logout.\n", inet_ntoa(cli_addr.sin_addr));
 						close(curfd);
 						pollfds[i].fd = -1;
 						break;
@@ -168,7 +187,6 @@ int main() {
 					else if(strncmp(buf, DEP, strlen(DEP)) == 0)
 						server_deposit(curfd, acc_fd, semid, buf, rsp);
 					
-					printf("\nReceive message %s from client %s.\n", buf, inet_ntoa(cli_addr.sin_addr));
 					update_log(pollid[i], buf, rsp, fifo_fd);
 					break;
 				}
@@ -177,13 +195,46 @@ int main() {
 			}
 		}
 	}
+}
+
+/* Handling Ctrl+C to shutdown server */
+void handle_shutdown(int sig) {
+	printf("\n\n[SERVER] Caught Ctrl+C! Cleaning up...\n");
+
+	// Killing the logger process
+	if (log_pid > 0) {
+		printf("[SERVER] Stopping logger module (PID %d)...\n", log_pid);
+		kill(log_pid, SIGTERM);
+		waitpid(log_pid, NULL, 0); // Wait for it to die
+	}
+
+	// Removing message queues
+	if (msgid != -1) {
+		msgctl(msgid, IPC_RMID, NULL);
+		printf("[SERVER] Removed Message Queue.\n");
+	}
+
+	// Removing semaphores
+	if (semid != -1) {
+		semctl(semid, 0, IPC_RMID);
+		printf("[SERVER] Removed Semaphore.\n");
+	}
+
+	// Closing all files
 	close(sockfd);
 	close(fifo_fd);
 	close(acc_fd);
+
+	// Deleting the FIFO file
+	unlink(FIFO_NAME);
+
+	printf("[SERVER] Shutdown complete. Goodbye.\n");
+	exit(0);
 }
 
 /* Server Operations */
 
+/* Updating client command and server resonse to log */
 int update_log(char* sid, char* cmd, char* rsp, int fifo_fd) {
 	time_t now = time(NULL);
 	char* timestamp = ctime(&now);
@@ -192,13 +243,13 @@ int update_log(char* sid, char* cmd, char* rsp, int fifo_fd) {
 	timestamp[strcspn(timestamp, "\n")] = 0;
 	
 	snprintf(buf, MAX_BUF, "[%s]|%s|%s|%s", timestamp, sid, cmd, rsp);
-	printf("Log entry: %s\n", buf);
 	
-	if(write(fifo_fd, buf, strlen(buf) + 1) < 0) perror("Write FIFO failed");
+	if(write(fifo_fd, buf, strlen(buf)) < 0) perror("Write FIFO failed");
 	
 	return(0);
 }
 
+/* Posting alert to message queue */
 int alert_error(char* sid, int msgid) {
 	struct q_entry alert_msg;
 	int id = atoi(sid);
@@ -207,11 +258,12 @@ int alert_error(char* sid, int msgid) {
 	alert_msg.mtype = (long) id;
 	snprintf(alert_msg.mtext, MAX_ALRT, "[ALERT!!!] wrong PIN entered for ID = %s", sid);
 	
-	if(msgsnd(msgid, &alert_msg, strlen(alert_msg.mtext) + 1, 0) < 0) perror("msgsnd() failed.");
+	if(msgsnd(msgid, &alert_msg, strlen(alert_msg.mtext), 0) < 0) perror("msgsnd() failed.");
 	
 	return(0);
 }
 
+/* Verifying ID and PIN with database */
 int server_login(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	int result, valid_id = 0, valid_pin = 0;
 	
@@ -232,20 +284,24 @@ int server_login(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	}
 	
 	if(!valid_id) {
+		printf("[SERVER] Sending to client: %s\n", ERR_ID);
 		if(send(sockfd, ERR_ID, strlen(ERR_ID), 0) < 0) perror("Send failed");
 		strcpy(rsp, ERR_ID);
 		return(1);
 	} else if(!valid_pin) {
+		printf("[SERVER] Sending to client: %s\n", ERR_PIN);
 		if(send(sockfd, ERR_PIN, strlen(ERR_PIN), 0) < 0) perror("Send failed");
 		strcpy(rsp, ERR_PIN);
 		return(-1);
 	}
 	
+	printf("[SERVER] Sending to client: %s\n", OK);
 	if(send(sockfd, OK, strlen(OK) + 1, 0) < 0) perror("Send failed");
 	strcpy(rsp, OK);
 	return(0);
 }
 
+/* Handling check balance command */
 int server_checkbal(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	double bal = 0;
 	char buf[MAX_BUF];
@@ -257,13 +313,14 @@ int server_checkbal(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	check_balance(acc_fd, id, &bal);
 	
 	snprintf(buf, MAX_BUF, "%s:%.2f", VAL, bal); /* Concatenate VAL:balance */
-	printf("%s\n", buf);
 	
+	printf("[SERVER] Sending to client: %s\n", buf);
 	if(send(sockfd, buf, strlen(buf) + 1, 0) < 0) perror("Send failed");
 	strcpy(rsp, buf);
 	return(0);
 }
 
+/* Handling withdrawal command */
 int server_withdraw(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	double bal = 0;
 	int insuff_bal = 0;
@@ -279,6 +336,7 @@ int server_withdraw(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	insuff_bal = withdraw_amount(acc_fd, semid, id, &bal);
 	
 	if(insuff_bal) {
+		printf("[SERVER] Sending to client: %s\n", ERR_BAL);
 		if(send(sockfd, ERR_BAL, strlen(ERR_BAL), 0) < 0) perror("Send failed");
 		strcpy(rsp, ERR_BAL);
 		return(-1);
@@ -286,11 +344,13 @@ int server_withdraw(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	
 	snprintf(buf, MAX_BUF, "%s:%.2f", OK, bal); /* Concatenate OK:new_bal */
 	
+	printf("[SERVER] Sending to client: %s\n", buf);
 	if(send(sockfd, buf, strlen(buf) + 1, 0) < 0) perror("Send failed");
 	strcpy(rsp, buf);
 	return(0);
 }
 
+/* Handling deposit command */
 int server_deposit(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	double bal = 0;
 	char buf[MAX_BUF];
@@ -306,6 +366,7 @@ int server_deposit(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	
 	snprintf(buf, MAX_BUF, "%s:%.2f", OK, bal); /* Concatenate OK:new_bal */
 	
+	printf("[SERVER] Sending to client: %s\n", buf);
 	if(send(sockfd, buf, strlen(buf) + 1, 0) < 0) perror("Send failed");
 	strcpy(rsp, buf);
 	return(0);

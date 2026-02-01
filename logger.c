@@ -18,14 +18,6 @@ int main() {
 	if (pid > 0) {
 		printf("[Logger Parent] Started. Handling FIFO.\n");
 
-		// Create FIFO
-		if (mkfifo(FIFO_NAME, 0666) == -1) {
-			if (errno != EEXIST) {
-				perror("[Logger] mkfifo failed");
-				exit(1);
-			}
-		}
-
 		// Open FIFO for reading
 		int fifo_fd = open(FIFO_NAME, O_RDONLY);
 		if (fifo_fd == -1) {
@@ -72,7 +64,7 @@ int main() {
 	else {
 		printf("[Logger Child] Started. Handling Message Queue.\n");
 
-		int msgid = msgget(MSG_KEY, 0666 | IPC_CREAT);
+		int msgid = msgget(MSG_KEY, 0666);
 		if (msgid == -1) {
 			perror("[Logger Child] msgget failed");
 			exit(1);
@@ -106,6 +98,5 @@ int main() {
 		exit(0);
 	}
 	close(log_fd);
-
 	return 0;
 }
