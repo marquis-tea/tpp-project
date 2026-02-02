@@ -276,11 +276,17 @@ int server_login(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	char *pin = strtok(NULL, ":");
 
 	result = verify_user(acc_fd, id, pin);
-	if(result > 0) {
-		valid_id = 1;
-	} else {
+	if (result == 0) {          // 0: Success
 		valid_id = 1;
 		valid_pin = 1;
+	} 
+	else if (result == 1) {     // 1: Wrong PIN
+		valid_id = 1;
+		valid_pin = 0;
+	} 
+	else {                      // -1: ID Not Found
+		valid_id = 0;
+		valid_pin = 0;
 	}
 	
 	if(!valid_id) {
