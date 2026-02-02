@@ -25,6 +25,7 @@ union semun {
     unsigned short *array;
 };
 
+/* Semaphore lock function */
 void p(int semid) {
     struct sembuf p_buf;
     p_buf.sem_num = 0;
@@ -38,6 +39,7 @@ void p(int semid) {
     return;
 }
 
+/* Semaphore unlock function */
 void v(int semid) {
     struct sembuf v_buf;
     v_buf.sem_num = 0;

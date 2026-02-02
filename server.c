@@ -267,8 +267,11 @@ int alert_error(char* sid, int msgid) {
 int server_login(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	int result, valid_id = 0, valid_pin = 0;
 	
+	char cmd_copy[MAX_BUF];
+	strcpy(cmd_copy, cmd);
+	
 	/* Parse the ID and PIN from the client command */
-	char *tmp = strtok(cmd, ":");
+	char *tmp = strtok(cmd_copy, ":");
 	char *id = strtok(NULL, ":");
 	char *pin = strtok(NULL, ":");
 
@@ -303,8 +306,11 @@ int server_checkbal(int sockfd, int acc_fd, char* cmd, char* rsp) {
 	double bal = 0;
 	char buf[MAX_BUF];
 	
+	char cmd_copy[MAX_BUF];
+	strcpy(cmd_copy, cmd);
+	
 	/* Parse the ID from the client command */
-	char *tmp = strtok(cmd, ":");
+	char *tmp = strtok(cmd_copy, ":");
 	char *id = strtok(NULL, ":");
 
 	if(check_balance(acc_fd, id, &bal) < 0) perror("Check balance failed");
@@ -322,9 +328,12 @@ int server_withdraw(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	double bal = 0;
 	int status = 0;
 	char buf[MAX_BUF];
-	
+
+	char cmd_copy[MAX_BUF];
+	strcpy(cmd_copy, cmd);
+
 	/* Parse the ID and Amount from the client command */
-	char *tmp = strtok(cmd, ":");
+	char *tmp = strtok(cmd_copy, ":");
 	char *id = strtok(NULL, ":");
 	char *amt = strtok(NULL, ":");
 	
@@ -351,9 +360,12 @@ int server_withdraw(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 int server_deposit(int sockfd, int acc_fd, int semid, char* cmd, char* rsp) {
 	double bal = 0;
 	char buf[MAX_BUF];
-	
+
+	char cmd_copy[MAX_BUF];
+	strcpy(cmd_copy, cmd);
+
 	/* Parse the ID and Amount from the client command */
-	char *tmp = strtok(cmd, ":");
+	char *tmp = strtok(cmd_copy, ":");
 	char *id = strtok(NULL, ":");
 	char *amt = strtok(NULL, ":");
 	
